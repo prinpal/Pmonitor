@@ -1,12 +1,12 @@
 [project]
 name = "pmonitor"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.1.1"
+description = "A process system resource usage monitor."
 readme = "README.md"
 authors = [
     { name = "Ray", email = "smallzhu66@163.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
     "matplotlib>=3.10.8",
     "pandas>=2.3.3",
