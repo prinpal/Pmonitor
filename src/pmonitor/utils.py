@@ -1,83 +1,138 @@
 import time
+import uuid
+from datetime import datetime
+from functools import wraps
+from pathlib import Path
+from typing import Callable
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
-import pandas as pd
+import polars as pl
 
 
-def timer(base=1, identity: str = "default"):
-    def decorator(func):
-        total_time = 0
-        n = 0
-
-        def wrapper(*args, **kwargs):
-            nonlocal n, total_time
-            start = time.perf_counter()
-            r = func(*args, **kwargs)
-            end = time.perf_counter()
-            n += base
-            total_time += end - start
-
-            print(f"{n} {identity} total time:", total_time)
-            print(f"{identity} average time:", total_time / n)
-            return r
-
-        return wrapper
-
-    return decorator
-
-
-def visualize_data(csv_file):
+def timer(func: Callable) -> Callable:
     """
-    读取CSV文件并可视化资源消耗情况。
+    装饰器：计算函数执行时间和平均执行时间
 
-    :param csv_file: CSV文件路径。
+    Args:
+        func: 需要计时的函数
+
+    Returns:
+        包装后的函数
+
+    Example:
+        ```python
+            @timer
+            def my_function():
+                pass
+        ```
     """
-    try:
-        # 1. 读取数据
-        df = pd.read_csv(csv_file)
-        if df.empty:
-            print(f"CSV文件 '{csv_file}' 为空，无法可视化。")
-            return
+    total_time = 0
+    n = 0
 
-        # 2. 数据预处理
-        # 将时间戳字符串转换为datetime对象，并设为索引
-        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-        df.set_index("Timestamp", inplace=True)
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        nonlocal n, total_time
+        start = time.perf_counter()
+        retval = func(*args, **kwargs)
+        end = time.perf_counter()
 
-        # 3. 创建图表
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
-        fig.suptitle(f"Resource Consumption Over Time (from {csv_file})", fontsize=16)
+        n += 1
+        total_time += end - start
+        print(f"Call {func.__name__} {n} times consume: {total_time:.5f}s")
+        print(f"Average time consumed per call: {total_time / n:.5f}s")
+        return retval
 
-        # 4. 绘制CPU、内存使用率图
-        ax1.plot(df.index, df["CPU_Percent"], label="CPU %", color="tab:blue")
-        ax1.plot(df.index, df["Memory_Percent"], label="Memory %", color="tab:green")
+    return wrapper
 
-        ax1.set_ylabel("CPU & Memory Usage (%)")
-        ax1.set_ylim(
-            0, max(100, df[["CPU_Percent", "Memory_Percent"]].max().max() * 1.1)
-        )  # 动态设置Y轴范围
-        ax1.legend(loc="upper right")
-        ax1.grid(True)
 
-        # 5. 绘制内存使用图
-        ax2.plot(df.index, df["Memory_RSS_MB"], label="RSS (Physical)", color="tab:red")
-        ax2.plot(
-            df.index, df["Memory_VMS_MB"], label="VMS (Virtual)", color="tab:orange"
-        )
-        ax2.set_ylabel("Memory Usage (MB)")
-        ax2.set_xlabel("Time")
-        ax2.legend(loc="upper right")
-        ax2.grid(True)
+def generate_unique_filename(prefix: str = "", extension: str = ".csv") -> str:
+    """
+    生成基于当前时间和UUID的唯一文件名
 
-        # 6. 格式化X轴时间显示
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-        fig.autofmt_xdate()  # 自动旋转日期标签
+    Args:
+        prefix: 文件名前缀
+        extension: 文件扩展名 (如 .txt, .csv)
 
-        plt.tight_layout(rect=(0, 0, 1, 0.96))  # 调整布局为标题留出空间
+    Returns:
+        唯一的文件名字符串
+    """
+    # 1. 获取当前时间，格式化为：年月日_时分秒
+    time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # 2. 生成UUID的简短形式(取前8位），防止极端情况下的时间冲突
+    unique_str = uuid.uuid4().hex[:8]
+
+    # 3. 组合文件名
+    filename = f"{prefix}{time_str}_{unique_str}{extension}"
+    return filename
+
+
+def visualize_data(csv_file: str, show_plot: bool = True, save_plot: bool = True):
+    """
+    读取CSV文件并可视化资源消耗情况
+
+    Args:
+        csv_file: CSV文件路径
+        show_plot: 是否显示图表
+        save_plot: 是否将图表保存为图片（默认保存至CSV文件所在目录）
+    """
+    # 1. 读取数据
+    fp = Path(csv_file)
+    df = pl.read_csv(fp)
+    if df.is_empty():
+        print(f"{fp} is empty, cannot visualize.")
+        return
+
+    # 2. 数据预处理，将时间戳列转换为 datetime 类型
+    df = df.with_columns(pl.col("Timestamp").cast(pl.Datetime))
+
+    # 提取绘图用的数据列
+    timestamps = df.select("Timestamp")
+    cpu_percent = df.select("CPU_Percent")
+    memory_percent = df.select("Memory_Percent")
+    memory_rss_mb = df.select("Memory_RSS_MB")
+    memory_vms_mb = df.select("Memory_VMS_MB")
+
+    # 3. 创建图表
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+    fig.suptitle(f"Resource Consumption Over Time (from {fp.name})", fontsize=16)
+
+    # 4. 绘制CPU、内存使用率图
+    ax1.plot(timestamps, cpu_percent, label="CPU %", color="tab:blue")
+    ax1.plot(timestamps, memory_percent, label="Memory %", color="tab:green")
+
+    # 计算 Y 轴动态范围
+    # Polars 写法: 选择多列 -> 计算最大值 -> 再次计算最大值 -> 转为 Python 标量
+    max_usage = (
+        df.select(pl.col(["CPU_Percent", "Memory_Percent"]).max())
+        .max_horizontal()
+        .item()
+    )
+
+    ax1.set_ylabel("CPU & Memory Usage (%)")
+    ax1.set_ylim(0, max(100, max_usage * 1.1))
+    ax1.legend(loc="upper right")
+    ax1.grid(True)
+
+    # 5. 绘制内存使用图
+    ax2.plot(timestamps, memory_rss_mb, label="RSS (Physical)", color="tab:red")
+    ax2.plot(timestamps, memory_vms_mb, label="VMS (Virtual)", color="tab:orange")
+    ax2.set_ylabel("Memory Usage (MB)")
+    ax2.set_xlabel("Time")
+    ax2.legend(loc="upper right")
+    ax2.grid(True)
+
+    # 6. 格式化X轴时间显示
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+    fig.autofmt_xdate()  # 自动旋转日期标签
+
+    plt.tight_layout(rect=(0, 0, 1, 0.96))  # 调整布局为标题留出空间
+
+    # 7. 保存图表
+    if save_plot:
+        plt.savefig(fp.with_suffix(".png"), dpi=300, bbox_inches="tight")
+        print(f"Save plot to {fp.with_suffix('.png')}")
+    # 8. 显示图表
+    if show_plot:
         plt.show()
-
-    except FileNotFoundError:
-        print(f"错误：找不到文件 '{csv_file}'。请先运行监控脚本生成数据。")
-    except Exception as e:
-        print(f"可视化时发生错误: {e}")
