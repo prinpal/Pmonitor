@@ -10,7 +10,7 @@ from .utils import generate_unique_filename
 
 
 class ProcessMonitor:
-    """持续监控指定进程CPU和内存消耗，并将数据保存到CSV文件"""
+    """持续监控指定进程CPU和内存消耗，并将数据保存到csv文件"""
 
     def __init__(self, pid: int, interval: float = 1.0):
         """
@@ -30,7 +30,7 @@ class ProcessMonitor:
             self.process = psutil.Process(pid)
             print(f"Successfully attached to process: {pid} ({self.process.name()})")
         except psutil.NoSuchProcess:
-            raise ValueError(f"Process {pid} not found!")
+            raise ValueError(f"Process {pid} does not exist!")
         except psutil.AccessDenied:
             raise ValueError(f"Access denied to process {pid}!")
 

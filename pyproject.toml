@@ -1,6 +1,6 @@
 [project]
 name = "psrm"
-version = "0.1.2"
+version = "0.1.3"
 description = "A process system resource usage monitor."
 readme = "README.md"
 authors = [
@@ -9,8 +9,6 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "matplotlib>=3.10.8",
-    "pandas>=2.3.3",
-    "polars>=1.36.1",
     "psutil>=7.1.3",
     "pydantic-settings>=2.12.0",
 ]

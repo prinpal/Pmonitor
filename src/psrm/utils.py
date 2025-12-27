@@ -7,7 +7,7 @@ from typing import Callable
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
-import polars as pl
+import numpy as np
 
 
 def timer(func: Callable) -> Callable:
@@ -68,31 +68,41 @@ def generate_unique_filename(prefix: str = "", extension: str = ".csv") -> str:
     return filename
 
 
-def visualize_data(csv_file: str, show_plot: bool = True, save_plot: bool = True):
+def visualize_metric(
+    csv_file: str | Path, show_plot: bool = True, save_plot: bool = True
+):
     """
-    读取CSV文件并可视化资源消耗情况
+    读取csv文件并可视化资源消耗情况
 
     Args:
-        csv_file: CSV文件路径
+        csv_file: csv文件路径
         show_plot: 是否显示图表
-        save_plot: 是否将图表保存为图片（默认保存至CSV文件所在目录）
+        save_plot: 是否将图表保存为图片（默认保存至csv文件所在目录）
     """
     # 1. 读取数据
     fp = Path(csv_file)
-    df = pl.read_csv(fp)
-    if df.is_empty():
-        print(f"{fp} is empty, cannot visualize.")
-        return
+    if fp.suffix != ".csv":
+        raise ValueError(f"{fp.name} is not a csv file!")
+    struct_arr = np.genfromtxt(
+        fp,
+        dtype=[
+            ("Timestamp", "datetime64[μs]"),
+            ("CPU_Percent", "f"),
+            ("Memory_Percent", "f"),
+            ("Memory_RSS_MB", "f"),
+            ("Memory_VMS_MB", "f"),
+        ],
+        delimiter=",",
+        names=True,
+        encoding="utf-8",
+    )
 
-    # 2. 数据预处理，将时间戳列转换为 datetime 类型
-    df = df.with_columns(pl.col("Timestamp").cast(pl.Datetime))
-
-    # 提取绘图用的数据列
-    timestamps = df.select("Timestamp")
-    cpu_percent = df.select("CPU_Percent")
-    memory_percent = df.select("Memory_Percent")
-    memory_rss_mb = df.select("Memory_RSS_MB")
-    memory_vms_mb = df.select("Memory_VMS_MB")
+    # 2. 提取绘图用的数据列
+    timestamps = struct_arr["Timestamp"]
+    cpu_percent = struct_arr["CPU_Percent"]
+    memory_percent = struct_arr["Memory_Percent"]
+    memory_rss_mb = struct_arr["Memory_RSS_MB"]
+    memory_vms_mb = struct_arr["Memory_VMS_MB"]
 
     # 3. 创建图表
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
@@ -103,13 +113,7 @@ def visualize_data(csv_file: str, show_plot: bool = True, save_plot: bool = True
     ax1.plot(timestamps, memory_percent, label="Memory %", color="tab:green")
 
     # 计算 Y 轴动态范围
-    # Polars 写法: 选择多列 -> 计算最大值 -> 再次计算最大值 -> 转为 Python 标量
-    max_usage = (
-        df.select(pl.col(["CPU_Percent", "Memory_Percent"]).max())
-        .max_horizontal()
-        .item()
-    )
-
+    max_usage = np.maximum(cpu_percent.max(), memory_percent.max()).item()
     ax1.set_ylabel("CPU & Memory Usage (%)")
     ax1.set_ylim(0, max(100, max_usage * 1.1))
     ax1.legend(loc="upper right")

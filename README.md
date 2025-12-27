@@ -23,20 +23,18 @@ Launch psrm to monitor the specified process; the default monitoring interval is
 
 ```shell
 # As a command line tool.
-psrm 12345
+psrm monitor 12345
 
 # As a installed package.
-python -m psrm 12345 1.5
+python -m psrm monitor 12345 --interval 1.5
 ```
 
-psrm will continuously record the process's system resource usage and save the data to a CSV file at fixed intervals.
+psrm will continuously record the process's system resource usage and save the data to a csv file at fixed intervals.
 
 Visualize the recorded data:
 
 ```shell
-from psrm.utils import visualize_data
-
-visualize_data("20251225_202020_953721bb.csv")
+psrm plot 20251225_202020_953721bb.csv
 ```
 
 The charts intuitively display how process resource usage changes over time.
